@@ -21,16 +21,6 @@
 # minval: Optional minimum acceptable value
 # maxval: Optional maximum acceptable value
 # env_alias: An alias environment variable
-# security_level: Specify security level of the tunable for AT_SECURE binaries.
-# 		  Valid values are as follows. There must be a strong, well
-# 		  documented reason for a tunable to be marked SXID_IGNORE or
-# 		  SXID_NONE:
-#
-# 	     SXID_ERASE: (default) Do not read and do not pass on to
-# 	     child processes.
-# 	     SXID_IGNORE: Do not read, but retain for non-AT_SECURE
-# 	     subprocesses.
-# 	     NONE: Read all the time.
 
 glibc {
   malloc {
