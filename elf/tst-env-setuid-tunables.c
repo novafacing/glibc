@@ -64,15 +64,10 @@ test_child (int off)
 
   printf ("    [%d] GLIBC_TUNABLES is %s\n", off, val);
   fflush (stdout);
-  if (val == NULL)
-    printf ("    [%d] GLIBC_TUNABLES environment variable absent\n", off);
+  if (val != NULL)
+    printf ("    [%d] Unexpected GLIBC_TUNABLES VALUE %s\n", off, val);
   else
-    {
-      if (strcmp (val, teststrings[off]) != 0)
-	printf ("    [%d] Unexpected GLIBC_TUNABLES VALUE %s\n", off, val);
-      else
-	ret = 0;
-    }
+    ret = 0;
   fflush (stdout);
 
   int32_t check = TUNABLE_GET_FULL (glibc, malloc, check, int32_t, NULL);
