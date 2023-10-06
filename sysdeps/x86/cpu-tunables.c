@@ -38,6 +38,7 @@ extern __typeof (memcmp) DEFAULT_MEMCMP;
 #else
 # define DEFAULT_MEMCMP	memcmp
 #endif
+#include <dl-tunables-parse.h>
 
 #define CHECK_GLIBC_IFUNC_CPU_OFF(f, cpu_features, name, len)		\
   _Static_assert (sizeof (#name) - 1 == len, #name " != " #len);	\
@@ -106,33 +107,33 @@ TUNABLE_CALLBACK (set_hwcaps) (tunable_val_t *valp)
      NOTE: the IFUNC selection may change over time.  Please check all
      multiarch implementations when experimenting.  */
 
-  const char *p = valp->strval, *c;
   struct cpu_features *cpu_features = &GLRO(dl_x86_cpu_features);
-  size_t len;
 
-  do
+  struct tunable_str_comma_t st;
+  tunable_str_comma_init (&st, valp);
+
+  struct tunable_str_t tstr;
+  while (tunable_str_comma_next (&st, &tstr))
     {
-      const char *n;
-      bool disable;
-      size_t nl;
+      if (tstr.len == 0)
+	continue;
 
-      for (c = p; *c != ','; c++)
-	if (*c == '\0')
-	  break;
+      const char *n = tstr.str;
+      size_t len = tstr.len;
 
-      len = c - p;
-      disable = *p == '-';
+      bool disable = *n == '-';
       if (disable)
 	{
-	  n = p + 1;
-	  nl = len - 1;
+	  n = n + 1;
+	  len = len - 1;
 	}
-      else
-	{
-	  n = p;
-	  nl = len;
-	}
-      switch (nl)
+
+	_dl_printf ("[%s] %.*s (%d)\n", __func__,
+		    (int) tstr.len,
+		    tstr.str,
+		    (int) tstr.len);
+
+      switch (len)
 	{
 	default:
 	  break;
@@ -280,9 +281,7 @@ TUNABLE_CALLBACK (set_hwcaps) (tunable_val_t *valp)
 	    }
 	  break;
 	}
-      p += len + 1;
     }
-  while (*c != '\0');
 }
 
 #if CET_ENABLED
@@ -290,12 +289,11 @@ attribute_hidden
 void
 TUNABLE_CALLBACK (set_x86_ibt) (tunable_val_t *valp)
 {
-  if (DEFAULT_MEMCMP (valp->strval, "on", sizeof ("on")) == 0)
+  if (tunable_strcmp_cte (valp, "on"))
     GL(dl_x86_feature_control).ibt = cet_always_on;
-  else if (DEFAULT_MEMCMP (valp->strval, "off", sizeof ("off")) == 0)
+  else if (tunable_strcmp_cte (valp, "off"))
     GL(dl_x86_feature_control).ibt = cet_always_off;
-  else if (DEFAULT_MEMCMP (valp->strval, "permissive",
-			   sizeof ("permissive")) == 0)
+  else if (tunable_strcmp_cte (valp, "permissive"))
     GL(dl_x86_feature_control).ibt = cet_permissive;
 }
 
@@ -303,12 +301,11 @@ attribute_hidden
 void
 TUNABLE_CALLBACK (set_x86_shstk) (tunable_val_t *valp)
 {
-  if (DEFAULT_MEMCMP (valp->strval, "on", sizeof ("on")) == 0)
+  if (tunable_strcmp_cte (valp, "on"))
     GL(dl_x86_feature_control).shstk = cet_always_on;
-  else if (DEFAULT_MEMCMP (valp->strval, "off", sizeof ("off")) == 0)
+  else if (tunable_strcmp_cte (valp, "off"))
     GL(dl_x86_feature_control).shstk = cet_always_off;
-  else if (DEFAULT_MEMCMP (valp->strval, "permissive",
-			   sizeof ("permissive")) == 0)
+  else if (tunable_strcmp_cte (valp, "permissive"))
     GL(dl_x86_feature_control).shstk = cet_permissive;
 }
 #endif

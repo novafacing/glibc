@@ -36,28 +36,6 @@
 #define TUNABLES_INTERNAL 1
 #include "dl-tunables.h"
 
-#include <not-errno.h>
-
-static char *
-tunables_strdup (const char *in)
-{
-  size_t i = 0;
-
-  while (in[i++] != '\0');
-  char *out = __minimal_malloc (i + 1);
-
-  /* For most of the tunables code, we ignore user errors.  However,
-     this is a system error - and running out of memory at program
-     startup should be reported, so we do.  */
-  if (out == NULL)
-    _dl_fatal_printf ("failed to allocate memory to process tunables\n");
-
-  while (i-- > 0)
-    out[i] = in[i];
-
-  return out;
-}
-
 static char **
 get_next_env (char **envp, char **name, size_t *namelen, char **val,
 	      char ***prev_envp)
@@ -134,14 +112,14 @@ do_tunable_update_val (tunable_t *cur, const tunable_val_t *valp,
 /* Validate range of the input value and initialize the tunable CUR if it looks
    good.  */
 static void
-tunable_initialize (tunable_t *cur, const char *strval)
+tunable_initialize (tunable_t *cur, const char *strval, size_t len)
 {
-  tunable_val_t val;
+  tunable_val_t val = { 0 };
 
   if (cur->type.type_code != TUNABLE_TYPE_STRING)
     val.numval = (tunable_num_t) _dl_strtoul (strval, NULL);
   else
-    val.strval = strval;
+    val.strval = (struct tunable_str_t) { strval, len };
   do_tunable_update_val (cur, &val, NULL, NULL);
 }
 
@@ -158,6 +136,7 @@ struct tunable_toset_t
 {
   tunable_t *t;
   const char *value;
+  size_t len;
 };
 
 enum { tunables_list_size = array_length (tunable_list) };
@@ -166,18 +145,18 @@ enum { tunables_list_size = array_length (tunable_list) };
    where delimiters ':' are replaced with '\0', so string tunables are null
    terminated.  */
 static int
-parse_tunables_string (char *valstring, struct tunable_toset_t *tunables)
+parse_tunables_string (const char *valstring, struct tunable_toset_t *tunables)
 {
   if (valstring == NULL || *valstring == '\0')
     return 0;
 
-  char *p = valstring;
+  const char *p = valstring;
   bool done = false;
   int ntunables = 0;
 
   while (!done)
     {
-      char *name = p;
+      const char *name = p;
 
       /* First, find where the name ends.  */
       while (*p != '=' && *p != ':' && *p != '\0')
@@ -199,7 +178,7 @@ parse_tunables_string (char *valstring, struct tunable_toset_t *tunables)
       /* Skip the ':' or '='.  */
       p++;
 
-      char *value = p;
+      const char *value = p;
 
       while (*p != '=' && *p != ':' && *p != '\0')
 	p++;
@@ -208,8 +187,6 @@ parse_tunables_string (char *valstring, struct tunable_toset_t *tunables)
 	return 0;
       else if (*p == '\0')
 	done = true;
-      else
-	*p++ = '\0';
 
       /* Add the tunable if it exists.  */
       for (size_t i = 0; i < tunables_list_size; i++)
@@ -218,7 +195,8 @@ parse_tunables_string (char *valstring, struct tunable_toset_t *tunables)
 
 	  if (tunable_is_name (cur->name, name))
 	    {
-	      tunables[ntunables++] = (struct tunable_toset_t) { cur, value };
+	      tunables[ntunables++] =
+		(struct tunable_toset_t) { cur, value, p - value };
 	      break;
 	    }
 	}
@@ -228,12 +206,12 @@ parse_tunables_string (char *valstring, struct tunable_toset_t *tunables)
 }
 
 static void
-parse_tunables (char *valstring)
+parse_tunables (const char *valstring)
 {
   struct tunable_toset_t tunables[tunables_list_size];
   int ntunables = parse_tunables_string (valstring, tunables);
   for (int i = 0; i < ntunables; i++)
-    tunable_initialize (tunables[i].t, tunables[i].value);
+    tunable_initialize (tunables[i].t, tunables[i].value, tunables[i].len);
 }
 
 /* Initialize the tunables list from the environment.  For now we only use the
@@ -256,7 +234,7 @@ __tunables_init (char **envp)
     {
       if (tunable_is_name ("GLIBC_TUNABLES", envname))
 	{
-	  parse_tunables (tunables_strdup (envval));
+	  parse_tunables (envval);
 	  continue;
 	}
 
@@ -274,7 +252,7 @@ __tunables_init (char **envp)
 	  /* We have a match.  Initialize and move on to the next line.  */
 	  if (tunable_is_name (name, envname))
 	    {
-	      tunable_initialize (cur, envval);
+	      tunable_initialize (cur, envval, 0);
 	      break;
 	    }
 	}
@@ -288,7 +266,7 @@ __tunables_print (void)
     {
       const tunable_t *cur = &tunable_list[i];
       if (cur->type.type_code == TUNABLE_TYPE_STRING
-	  && cur->val.strval == NULL)
+	  && cur->val.strval.str == NULL)
 	_dl_printf ("%s:\n", cur->name);
       else
 	{
@@ -314,7 +292,9 @@ __tunables_print (void)
 			  (size_t) cur->type.max);
 	      break;
 	    case TUNABLE_TYPE_STRING:
-	      _dl_printf ("%s\n", cur->val.strval);
+	      _dl_printf ("%.*s\n",
+			  (int) cur->val.strval.len,
+			  cur->val.strval.str);
 	      break;
 	    default:
 	      __builtin_unreachable ();
@@ -349,7 +329,7 @@ __tunable_get_val (tunable_id_t id, void *valp, tunable_callback_t callback)
 	}
     case TUNABLE_TYPE_STRING:
 	{
-	  *((const char **)valp) = cur->val.strval;
+	  *((struct tunable_str_t **) valp) = &cur->val.strval;
 	  break;
 	}
     default:

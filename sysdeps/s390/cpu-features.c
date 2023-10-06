@@ -22,6 +22,7 @@
 #include <ifunc-memcmp.h>
 #include <string.h>
 extern __typeof (memcmp) MEMCMP_DEFAULT;
+#include <dl-tunables-parse.h>
 
 #define S390_COPY_CPU_FEATURES(SRC_PTR, DEST_PTR)	\
   (DEST_PTR)->hwcap = (SRC_PTR)->hwcap;			\
@@ -51,32 +52,23 @@ TUNABLE_CALLBACK (set_hwcaps) (tunable_val_t *valp)
   struct cpu_features cpu_features_curr;
   S390_COPY_CPU_FEATURES (cpu_features, &cpu_features_curr);
 
-  const char *token = valp->strval;
-  do
+  struct tunable_str_comma_t st;
+  tunable_str_comma_init (&st, valp);
+
+  struct tunable_str_t tstr;
+  while (tunable_str_comma_next (&st, &tstr))
     {
-      const char *token_end, *feature;
-      bool disable;
-      size_t token_len;
-      size_t feature_len;
+      if (tstr.len == 0)
+	continue;
 
-      /* Find token separator or end of string.  */
-      for (token_end = token; *token_end != ','; token_end++)
-	if (*token_end == '\0')
-	  break;
+      const char *feature = tstr.str;
+      size_t feature_len = tstr.len;
 
-      /* Determine feature.  */
-      token_len = token_end - token;
-      if (*token == '-')
+      bool disable = *feature == '-';
+      if (disable)
 	{
-	  disable = true;
-	  feature = token + 1;
-	  feature_len = token_len - 1;
-	}
-      else
-	{
-	  disable = false;
-	  feature = token;
-	  feature_len = token_len;
+	  feature = feature + 1;
+	  feature_len = feature_len - 1;
 	}
 
       /* Handle only the features here which are really used in the
@@ -187,14 +179,7 @@ TUNABLE_CALLBACK (set_hwcaps) (tunable_val_t *valp)
 	  else
 	    cpu_features_curr.stfle_bits[0] |= stfle_bits0_mask;
 	}
-
-      /* Jump over current token ... */
-      token += token_len;
-
-      /* ... and skip token separator for next round.  */
-      if (*token == ',') token++;
     }
-  while (*token != '\0');
 
   /* Copy back the features after checking that no unsupported features were
      enabled by user.  */
